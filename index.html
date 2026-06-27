@@ -328,6 +328,7 @@ function detectGroups(messages){
 let contactsData = [];
 let selectedKey = null;
 let activePane = "contacts"; // "contacts" | "thread"
+const isMobile = () => window.matchMedia("(max-width:680px)").matches;
 
 function setActivePane(pane){
   activePane = pane;
@@ -373,7 +374,13 @@ function renderContacts(){
     row2.append(prev, count);
 
     el.append(row1, row2);
-    el.addEventListener("click", () => { selectContact(c.key); setActivePane("thread"); });
+    el.addEventListener("click", e => {
+      e.stopPropagation();
+      selectContact(c.key);
+      // Desktop: keep focus on the list so up/down keep browsing contacts.
+      // Mobile (single column): reveal the thread the tap opened.
+      setActivePane(isMobile() ? "thread" : "contacts");
+    });
     list.appendChild(el);
   }
 }
@@ -491,6 +498,10 @@ dropzone.addEventListener("drop", e => {
 // prevent the browser from opening a file dropped outside the zone
 window.addEventListener("dragover", e => e.preventDefault());
 window.addEventListener("drop", e => e.preventDefault());
+
+// Clicking anywhere in a pane moves keyboard focus to it.
+document.getElementById("contacts").addEventListener("click", () => setActivePane("contacts"));
+document.getElementById("thread-wrap").addEventListener("click", () => setActivePane("thread"));
 
 // Arrow-key navigation: Left/Right pick the pane; Up/Down move contacts (or scroll the thread).
 document.addEventListener("keydown", e => {
