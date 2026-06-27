@@ -78,6 +78,12 @@
 
   #panes{flex:1;display:grid;grid-template-columns:320px 1fr;min-height:0;}
 
+  /* focused-pane highlight (keyboard navigation) */
+  #contacts, #thread-wrap{transition:box-shadow .12s;}
+  #contacts.active-pane{box-shadow:inset 0 0 0 2px var(--accent);}
+  #thread-wrap.active-pane{box-shadow:inset 0 0 0 2px var(--accent);}
+  #thread:focus{outline:none;}
+
   /* contact list */
   #contacts{border-right:1px solid var(--border);overflow-y:auto;background:var(--panel);}
   .contact{
@@ -171,7 +177,7 @@
         <div class="h-name" id="thread-name"></div>
         <div class="h-sub" id="thread-sub"></div>
       </div>
-      <div id="thread"><div class="empty">Select a contact to view the conversation.</div></div>
+      <div id="thread" tabindex="0"><div class="empty">Select a contact to view the conversation.</div></div>
     </div>
   </div>
 </div>
@@ -321,6 +327,25 @@ function detectGroups(messages){
 /* ---------------- Rendering ---------------- */
 let contactsData = [];
 let selectedKey = null;
+let activePane = "contacts"; // "contacts" | "thread"
+
+function setActivePane(pane){
+  activePane = pane;
+  document.getElementById("contacts").classList.toggle("active-pane", pane === "contacts");
+  document.getElementById("thread-wrap").classList.toggle("active-pane", pane === "thread");
+  document.getElementById("panes").classList.toggle("show-thread", pane === "thread");
+  if(pane === "thread") document.getElementById("thread").focus();
+}
+
+function moveSelection(delta){
+  if(!contactsData.length) return;
+  let idx = contactsData.findIndex(c => c.key === selectedKey);
+  if(idx === -1) idx = delta > 0 ? 0 : contactsData.length - 1;
+  else idx = Math.min(contactsData.length - 1, Math.max(0, idx + delta));
+  selectContact(contactsData[idx].key);
+  const el = document.querySelector(".contact.selected");
+  if(el) el.scrollIntoView({ block: "nearest" });
+}
 
 function snippet(m){
   if(!m.body.trim()) return "📎 <non-text content>";
@@ -348,7 +373,7 @@ function renderContacts(){
     row2.append(prev, count);
 
     el.append(row1, row2);
-    el.addEventListener("click", () => selectContact(c.key));
+    el.addEventListener("click", () => { selectContact(c.key); setActivePane("thread"); });
     list.appendChild(el);
   }
 }
@@ -359,7 +384,6 @@ function selectContact(key){
   const c = contactsData.find(x => x.key === key);
   if(!c) return;
 
-  document.getElementById("panes").classList.add("show-thread");
   document.getElementById("thread-head").style.display = "flex";
   document.getElementById("thread-name").textContent = c.display;
   document.getElementById("thread-sub").textContent =
@@ -436,8 +460,8 @@ function loadText(text){
 
   document.getElementById("upload-screen").style.display = "none";
   document.getElementById("viewer").classList.add("active");
-  document.getElementById("panes").classList.remove("show-thread");
   renderContacts();
+  setActivePane("contacts");
 }
 
 function handleFile(file){
@@ -467,6 +491,21 @@ dropzone.addEventListener("drop", e => {
 // prevent the browser from opening a file dropped outside the zone
 window.addEventListener("dragover", e => e.preventDefault());
 window.addEventListener("drop", e => e.preventDefault());
+
+// Arrow-key navigation: Left/Right pick the pane; Up/Down move contacts (or scroll the thread).
+document.addEventListener("keydown", e => {
+  if(!document.getElementById("viewer").classList.contains("active")) return;
+  switch(e.key){
+    case "ArrowLeft":  setActivePane("contacts"); e.preventDefault(); break;
+    case "ArrowRight": setActivePane("thread");   e.preventDefault(); break;
+    case "ArrowUp":
+      if(activePane === "contacts"){ moveSelection(-1); e.preventDefault(); }
+      break; // in thread pane, let the focused list scroll natively
+    case "ArrowDown":
+      if(activePane === "contacts"){ moveSelection(1); e.preventDefault(); }
+      break;
+  }
+});
 
 document.getElementById("reset-btn").addEventListener("click", () => {
   fileInput.value = "";
