@@ -128,6 +128,28 @@
   .stamp{font-size:10.5px;color:var(--muted);padding:0 6px;display:flex;align-items:center;gap:5px;}
   .group-flag{cursor:help;font-size:12px;}
 
+  /* hover context popup */
+  #context-popup{
+    position:fixed;z-index:1000;display:none;pointer-events:none;
+    width:420px;max-width:92vw;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:10px;
+    box-shadow:0 12px 34px rgba(0,0,0,.55);padding:7px;
+    font-size:12px;line-height:1.35;
+  }
+  #context-popup.show{display:block;}
+  #context-popup .cp-title{font-size:10px;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.05em;margin:1px 5px 6px;}
+  #context-popup .cp-day{color:var(--muted);font-size:10px;font-weight:600;
+    padding:5px 5px 2px;letter-spacing:.02em;}
+  #context-popup .cp-row{display:flex;gap:7px;padding:3px 6px;border-radius:6px;align-items:baseline;}
+  #context-popup .cp-row.cur{background:rgba(59,130,246,.20);box-shadow:inset 0 0 0 1px var(--accent);}
+  #context-popup .cp-time{flex:none;color:var(--muted);font-variant-numeric:tabular-nums;}
+  #context-popup .cp-who{flex:none;max-width:130px;font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #context-popup .cp-who.out{color:#7ab0ff;}
+  #context-popup .cp-body{flex:1;min-width:0;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
   ::-webkit-scrollbar{width:10px;height:10px;}
   ::-webkit-scrollbar-thumb{background:#2c313c;border-radius:6px;}
   ::-webkit-scrollbar-thumb:hover{background:#3a4150;}
@@ -181,6 +203,8 @@
     </div>
   </div>
 </div>
+
+<div id="context-popup"></div>
 
 <script>
 "use strict";
@@ -265,6 +289,10 @@ function buildModel(objs){
 
   detectGroups(messages);
 
+  // global chronological timeline (all contacts interleaved) — powers the hover context popup
+  allMessages = messages.slice().sort((a, b) => a.ts - b.ts);
+  allMessages.forEach((m, i) => m.gidx = i);
+
   // group by normalized phone key
   const map = new Map();
   for(const m of messages){
@@ -329,6 +357,7 @@ function detectGroups(messages){
 
 /* ---------------- Rendering ---------------- */
 let contactsData = [];
+let allMessages = [];        // every message, sorted chronologically; each has .gidx
 let selectedKey = null;
 let activePane = "contacts"; // "contacts" | "thread"
 const isMobile = () => window.matchMedia("(max-width:680px)").matches;
@@ -355,6 +384,72 @@ function snippet(m){
   if(!m.body.trim()) return "📎 <non-text content>";
   return m.body.replace(/\s+/g, " ").trim();
 }
+
+/* ---------------- Hover context popup (global timeline window) ---------------- */
+let ctxTimer = null;
+const ctxPopup = document.getElementById("context-popup");
+
+function buildContext(gidx){
+  const start = Math.max(0, gidx - 10);
+  const end = Math.min(allMessages.length - 1, gidx + 5);
+  ctxPopup.textContent = "";
+
+  const title = document.createElement("div");
+  title.className = "cp-title";
+  title.textContent = "Timeline across all conversations";
+  ctxPopup.appendChild(title);
+
+  let prevDay = null;
+  for(let i = start; i <= end; i++){
+    const m = allMessages[i];
+    if(!prevDay || !sameDay(prevDay, m.ts)){
+      const d = document.createElement("div");
+      d.className = "cp-day";
+      d.textContent = dayFmt.format(m.ts);
+      ctxPopup.appendChild(d);
+      prevDay = m.ts;
+    }
+    const row = document.createElement("div");
+    row.className = "cp-row" + (i === gidx ? " cur" : "");
+
+    const time = document.createElement("span");
+    time.className = "cp-time";
+    time.textContent = timeFmt.format(m.ts);
+
+    const who = document.createElement("span");
+    who.className = "cp-who" + (m.dir === "out" ? " out" : "");
+    who.textContent = m.dir === "out" ? "You" : (m.name || fmtPhone(m.phone));
+
+    const body = document.createElement("span");
+    body.className = "cp-body";
+    body.textContent = snippet(m);
+
+    row.append(time, who, body);
+    ctxPopup.appendChild(row);
+  }
+}
+
+function showContext(anchorEl, gidx){
+  if(gidx == null || !allMessages.length) return;
+  buildContext(gidx);
+  ctxPopup.style.visibility = "hidden";
+  ctxPopup.classList.add("show");           // display:block so we can measure
+  const pr = anchorEl.getBoundingClientRect();
+  const pw = ctxPopup.offsetWidth, ph = ctxPopup.offsetHeight, margin = 10;
+
+  let left = pr.left - pw - 12;              // prefer left of the bubble
+  if(left < margin) left = pr.right + 12;    // otherwise to the right
+  left = Math.max(margin, Math.min(left, window.innerWidth - pw - margin));
+
+  let top = pr.top + pr.height / 2 - ph / 2; // vertically centered on the bubble
+  top = Math.max(margin, Math.min(top, window.innerHeight - ph - margin));
+
+  ctxPopup.style.left = left + "px";
+  ctxPopup.style.top = top + "px";
+  ctxPopup.style.visibility = "visible";
+}
+
+function hideContext(){ ctxPopup.classList.remove("show"); }
 
 function renderContacts(){
   const list = document.getElementById("contacts");
@@ -443,6 +538,14 @@ function renderMsg(m){
   t.title = fullFmt.format(m.ts);
   stamp.appendChild(t);
   wrap.appendChild(stamp);
+
+  // Hover shows where this message sits in the global timeline across all contacts.
+  wrap.addEventListener("mouseenter", () => {
+    clearTimeout(ctxTimer);
+    ctxTimer = setTimeout(() => showContext(bubble, m.gidx), 200);
+  });
+  wrap.addEventListener("mouseleave", () => { clearTimeout(ctxTimer); hideContext(); });
+
   return wrap;
 }
 
@@ -501,6 +604,10 @@ dropzone.addEventListener("drop", e => {
 // prevent the browser from opening a file dropped outside the zone
 window.addEventListener("dragover", e => e.preventDefault());
 window.addEventListener("drop", e => e.preventDefault());
+
+// the popup is fixed-positioned, so dismiss it when the page scrolls underneath it
+document.getElementById("thread").addEventListener("scroll", hideContext, true);
+window.addEventListener("scroll", hideContext, true);
 
 // Clicking anywhere in a pane moves keyboard focus to it.
 document.getElementById("contacts").addEventListener("click", () => setActivePane("contacts"));
