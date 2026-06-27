@@ -1,0 +1,8 @@
+# Never commit message exports — they contain private/personal data.
+*.csv
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boomerang Text Thread Viewer</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#171a21;
+    --panel-2:#1e222b;
+    --border:#2a2f3a;
+    --text:#e7e9ee;
+    --muted:#8b93a3;
+    --accent:#3b82f6;
+    --in-bubble:#262b35;
+    --in-text:#e7e9ee;
+    --out-bubble:#2563eb;
+    --out-text:#ffffff;
+    --selected:#222834;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,
+      "Apple Color Emoji","Segoe UI Emoji",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Upload screen ---------- */
+  #upload-screen{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:18px;
+    padding:24px;
+    text-align:center;
+  }
+  #upload-screen h1{font-size:22px;margin:0;font-weight:650;}
+  #upload-screen p{margin:0;color:var(--muted);max-width:520px;line-height:1.5;}
+  #dropzone{
+    width:min(560px,100%);
+    border:2px dashed var(--border);
+    border-radius:16px;
+    padding:46px 28px;
+    background:var(--panel);
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  #dropzone.drag{border-color:var(--accent);background:var(--panel-2);}
+  #dropzone .big{font-size:40px;line-height:1;margin-bottom:14px;}
+  #dropzone .hint{color:var(--muted);font-size:14px;margin-top:8px;}
+  #dropzone .browse{
+    display:inline-block;margin-top:16px;background:var(--accent);color:#fff;
+    padding:9px 18px;border-radius:9px;font-weight:600;font-size:14px;
+  }
+  .privacy{font-size:12px;color:var(--muted);max-width:520px;line-height:1.5;}
+  #error{color:#f87171;font-size:14px;min-height:18px;}
+
+  /* ---------- Viewer ---------- */
+  #viewer{display:none;height:100%;flex-direction:column;}
+  #viewer.active{display:flex;}
+  #topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:10px 16px;border-bottom:1px solid var(--border);background:var(--panel);
+  }
+  #topbar .title{font-weight:650;font-size:15px;}
+  #topbar .meta{color:var(--muted);font-size:13px;}
+  #topbar button{
+    background:var(--panel-2);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer;
+  }
+  #topbar button:hover{border-color:var(--accent);}
+
+  #panes{flex:1;display:grid;grid-template-columns:320px 1fr;min-height:0;}
+
+  /* contact list */
+  #contacts{border-right:1px solid var(--border);overflow-y:auto;background:var(--panel);}
+  .contact{
+    display:flex;flex-direction:column;gap:3px;
+    padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;
+  }
+  .contact:hover{background:var(--panel-2);}
+  .contact.selected{background:var(--selected);}
+  .contact .row1{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .contact .name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .contact .time{font-size:11px;color:var(--muted);flex:none;}
+  .contact .row2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .contact .preview{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .contact .count{font-size:11px;color:var(--muted);flex:none;background:var(--panel-2);
+    border-radius:10px;padding:1px 7px;}
+
+  /* thread */
+  #thread-wrap{display:flex;flex-direction:column;min-height:0;background:var(--bg);}
+  #thread-head{
+    padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);
+    display:flex;flex-direction:column;gap:2px;
+  }
+  #thread-head .h-name{font-weight:650;font-size:15px;}
+  #thread-head .h-sub{font-size:12.5px;color:var(--muted);}
+  #thread{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:4px;}
+  #thread .empty{margin:auto;color:var(--muted);font-size:14px;}
+
+  .day-sep{align-self:center;color:var(--muted);font-size:11.5px;font-weight:600;
+    margin:14px 0 8px;letter-spacing:.02em;text-transform:uppercase;}
+
+  .msg{max-width:74%;display:flex;flex-direction:column;gap:2px;margin:2px 0;}
+  .msg.in{align-self:flex-start;align-items:flex-start;}
+  .msg.out{align-self:flex-end;align-items:flex-end;}
+  .bubble{
+    padding:8px 12px;border-radius:16px;font-size:14px;line-height:1.4;
+    white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;
+  }
+  .msg.in .bubble{background:var(--in-bubble);color:var(--in-text);border-bottom-left-radius:5px;}
+  .msg.out .bubble{background:var(--out-bubble);color:var(--out-text);border-bottom-right-radius:5px;}
+  .bubble.media{font-style:italic;color:var(--muted);}
+  .msg.out .bubble.media{color:#dbe6ff;}
+  .stamp{font-size:10.5px;color:var(--muted);padding:0 6px;display:flex;align-items:center;gap:5px;}
+  .group-flag{cursor:help;font-size:12px;}
+
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#2c313c;border-radius:6px;}
+  ::-webkit-scrollbar-thumb:hover{background:#3a4150;}
+
+  @media (max-width:680px){
+    #panes{grid-template-columns:1fr;}
+    #contacts{display:block;}
+    #panes.show-thread #contacts{display:none;}
+    #panes:not(.show-thread) #thread-wrap{display:none;}
+    .msg{max-width:86%;}
+  }
+</style>
+</head>
+<body>
+
+<div id="upload-screen">
+  <h1>📱 Boomerang Text Thread Viewer</h1>
+  <p>Upload a Boomerang messaging CSV export to read it as conversations — grouped by
+     contact, in order, with incoming and outgoing messages clearly separated.</p>
+
+  <div id="dropzone">
+    <div class="big">⬆️</div>
+    <div><strong>Drag &amp; drop</strong> a CSV export here</div>
+    <div class="hint">or</div>
+    <span class="browse">Choose a file</span>
+    <input id="file-input" type="file" accept=".csv,text/csv" hidden>
+  </div>
+
+  <div id="error"></div>
+
+  <p class="privacy">🔒 Everything happens in your browser. The file is never uploaded —
+     no message ever leaves this device.</p>
+</div>
+
+<div id="viewer">
+  <div id="topbar">
+    <div>
+      <div class="title">📱 Text Threads</div>
+      <div class="meta" id="topbar-meta"></div>
+    </div>
+    <button id="reset-btn">Load another file</button>
+  </div>
+  <div id="panes">
+    <div id="contacts"></div>
+    <div id="thread-wrap">
+      <div id="thread-head" style="display:none">
+        <div class="h-name" id="thread-name"></div>
+        <div class="h-sub" id="thread-sub"></div>
+      </div>
+      <div id="thread"><div class="empty">Select a contact to view the conversation.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------- CSV parsing (RFC-4180-ish: quoted fields, embedded newlines, "" escape) ---------------- */
+function parseCSV(text){
+  if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ',') { row.push(field); field = ""; }
+      else if(c === '\r') { /* ignore */ }
+      else if(c === '\n') { row.push(field); rows.push(row); row = []; field = ""; }
+      else field += c;
+    }
+  }
+  if(field !== "" || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+
+function rowsToObjects(rows){
+  if(!rows.length) return [];
+  const header = rows[0].map(h => h.trim());
+  const out = [];
+  for(let r = 1; r < rows.length; r++){
+    const cells = rows[r];
+    if(cells.length === 1 && cells[0].trim() === "") continue; // blank line
+    const o = {};
+    header.forEach((h, i) => o[h] = cells[i] !== undefined ? cells[i] : "");
+    out.push(o);
+  }
+  return out;
+}
+
+/* ---------------- Helpers ---------------- */
+function normPhone(p){
+  const d = (p || "").replace(/\D/g, "");
+  return (d.length === 11 && d[0] === "1") ? d.slice(1) : d;
+}
+function fmtPhone(p){
+  const d = normPhone(p);
+  if(d.length === 10) return "(" + d.slice(0,3) + ") " + d.slice(3,6) + "-" + d.slice(6);
+  return p || "Unknown";
+}
+function parseTs(s){
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/.exec((s||"").trim());
+  if(!m) return null;
+  return new Date(Date.UTC(+m[3], +m[1]-1, +m[2], +m[4], +m[5], +m[6]));
+}
+function sameDay(a, b){
+  return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+}
+const dayFmt  = new Intl.DateTimeFormat(undefined, {weekday:"short", month:"short", day:"numeric", year:"numeric"});
+const timeFmt = new Intl.DateTimeFormat(undefined, {hour:"numeric", minute:"2-digit"});
+const fullFmt = new Intl.DateTimeFormat(undefined, {dateStyle:"medium", timeStyle:"short"});
+const listTimeFmt = new Intl.DateTimeFormat(undefined, {month:"numeric", day:"numeric", year:"2-digit"});
+
+/* ---------------- Build model from rows ---------------- */
+function buildModel(objs){
+  const messages = objs.map(o => {
+    const dir = (o["Direction"] || "").toLowerCase().indexOf("out") !== -1 ? "out" : "in";
+    return {
+      device: o["Device Name"] || "",
+      ts: parseTs(o["Timestamp (UTC)"]),
+      phone: o["Phone Number"] || "",
+      key: normPhone(o["Phone Number"]),
+      name: (o["Contact Name"] || "").trim(),
+      dir,
+      body: o["Body"] != null ? o["Body"] : "",
+      group: false,
+      groupReason: ""
+    };
+  }).filter(m => m.ts); // drop rows without a parseable timestamp
+
+  detectGroups(messages);
+
+  // group by normalized phone key
+  const map = new Map();
+  for(const m of messages){
+    const k = m.key || "unknown";
+    if(!map.has(k)) map.set(k, { key:k, phone:m.phone, name:"", msgs:[] });
+    const c = map.get(k);
+    c.msgs.push(m);
+    if(!c.name && m.name) c.name = m.name;       // adopt first non-blank name
+    if(!c.phone && m.phone) c.phone = m.phone;
+  }
+
+  const contacts = [...map.values()];
+  for(const c of contacts){
+    c.msgs.sort((a,b) => a.ts - b.ts);
+    c.last = c.msgs[c.msgs.length - 1].ts;
+    c.display = c.name || fmtPhone(c.phone);
+  }
+  contacts.sort((a,b) => b.last - a.last);       // most-recent first
+  return contacts;
+}
+
+/* ---------------- Suspected-group detection (per message) ---------------- */
+const REACTION_RE = /(?:^|\s)to\s+[“"]([\s\S]+)[”"]\s*$/;
+const PLURAL_RE = /^[\s\W]*(?:hey|hi|hello|ok|okay|yo)?\s*(?:guys|y'?all|everyone|everybody|you all|you guys|fam|team)\b/i;
+
+function detectGroups(messages){
+  const byBody = new Map();
+  for(const m of messages){
+    const b = m.body.trim();
+    if(!b) continue;
+    if(!byBody.has(b)) byBody.set(b, []);
+    byBody.get(b).push(m);
+  }
+  for(const m of messages){
+    const b = m.body.trim();
+    if(!b) continue;
+    const rm = REACTION_RE.exec(b);
+    if(rm){
+      const quoted = rm[1].trim();
+      const refs = byBody.get(quoted) || [];
+      if(refs.some(o => o.key !== m.key)){
+        m.group = true;
+        m.groupReason = "Looks like a group text — reacts to a message from a different contact";
+        for(const o of refs){
+          if(o.key !== m.key && !o.group){
+            o.group = true;
+            o.groupReason = "Looks like a group text — another contact reacted to this message";
+          }
+        }
+        continue;
+      }
+    }
+    if(PLURAL_RE.test(b)){
+      m.group = true;
+      m.groupReason = "Looks like a group text — addresses multiple people";
+    }
+  }
+}
+
+/* ---------------- Rendering ---------------- */
+let contactsData = [];
+let selectedKey = null;
+
+function snippet(m){
+  if(!m.body.trim()) return "📎 <non-text content>";
+  return m.body.replace(/\s+/g, " ").trim();
+}
+
+function renderContacts(){
+  const list = document.getElementById("contacts");
+  list.textContent = "";
+  for(const c of contactsData){
+    const el = document.createElement("div");
+    el.className = "contact" + (c.key === selectedKey ? " selected" : "");
+    el.dataset.key = c.key;
+
+    const row1 = document.createElement("div"); row1.className = "row1";
+    const name = document.createElement("div"); name.className = "name"; name.textContent = c.display;
+    const time = document.createElement("div"); time.className = "time"; time.textContent = listTimeFmt.format(c.last);
+    row1.append(name, time);
+
+    const row2 = document.createElement("div"); row2.className = "row2";
+    const prev = document.createElement("div"); prev.className = "preview";
+    const lastMsg = c.msgs[c.msgs.length - 1];
+    prev.textContent = (lastMsg.dir === "out" ? "You: " : "") + snippet(lastMsg);
+    const count = document.createElement("div"); count.className = "count"; count.textContent = c.msgs.length;
+    row2.append(prev, count);
+
+    el.append(row1, row2);
+    el.addEventListener("click", () => selectContact(c.key));
+    list.appendChild(el);
+  }
+}
+
+function selectContact(key){
+  selectedKey = key;
+  renderContacts();
+  const c = contactsData.find(x => x.key === key);
+  if(!c) return;
+
+  document.getElementById("panes").classList.add("show-thread");
+  document.getElementById("thread-head").style.display = "flex";
+  document.getElementById("thread-name").textContent = c.display;
+  document.getElementById("thread-sub").textContent =
+    fmtPhone(c.phone) + " · " + c.msgs.length + " messages";
+
+  const thread = document.getElementById("thread");
+  thread.textContent = "";
+  let prevDate = null;
+  for(const m of c.msgs){
+    if(!prevDate || !sameDay(prevDate, m.ts)){
+      const sep = document.createElement("div");
+      sep.className = "day-sep";
+      sep.textContent = dayFmt.format(m.ts);
+      thread.appendChild(sep);
+      prevDate = m.ts;
+    }
+    thread.appendChild(renderMsg(m));
+  }
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function renderMsg(m){
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + m.dir;
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  if(!m.body.trim()){
+    bubble.classList.add("media");
+    bubble.textContent = "📎 <non-text content>";
+  } else {
+    bubble.textContent = m.body.trim();
+  }
+  wrap.appendChild(bubble);
+
+  const stamp = document.createElement("div");
+  stamp.className = "stamp";
+  if(m.group){
+    const flag = document.createElement("span");
+    flag.className = "group-flag";
+    flag.textContent = "👥";
+    flag.title = m.groupReason;
+    stamp.appendChild(flag);
+  }
+  const t = document.createElement("span");
+  t.textContent = timeFmt.format(m.ts);
+  t.title = fullFmt.format(m.ts);
+  stamp.appendChild(t);
+  wrap.appendChild(stamp);
+  return wrap;
+}
+
+/* ---------------- File loading ---------------- */
+function loadText(text){
+  const err = document.getElementById("error");
+  err.textContent = "";
+  let contacts;
+  try{
+    contacts = buildModel(rowsToObjects(parseCSV(text)));
+  }catch(e){
+    err.textContent = "Could not parse that file: " + e.message;
+    return;
+  }
+  if(!contacts.length){
+    err.textContent = "No messages found. Is this a Boomerang messaging CSV export?";
+    return;
+  }
+  contactsData = contacts;
+  selectedKey = null;
+
+  const totalMsgs = contacts.reduce((n, c) => n + c.msgs.length, 0);
+  document.getElementById("topbar-meta").textContent =
+    contacts.length + " contacts · " + totalMsgs + " messages";
+
+  document.getElementById("upload-screen").style.display = "none";
+  document.getElementById("viewer").classList.add("active");
+  document.getElementById("panes").classList.remove("show-thread");
+  renderContacts();
+}
+
+function handleFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => loadText(String(reader.result));
+  reader.onerror = () => { document.getElementById("error").textContent = "Failed to read the file."; };
+  reader.readAsText(file);
+}
+
+/* ---------------- Wiring ---------------- */
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("file-input");
+
+dropzone.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => handleFile(fileInput.files[0]));
+
+["dragenter","dragover"].forEach(ev =>
+  dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add("drag"); }));
+["dragleave","dragend"].forEach(ev =>
+  dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove("drag"); }));
+dropzone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropzone.classList.remove("drag");
+  if(e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+// prevent the browser from opening a file dropped outside the zone
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => e.preventDefault());
+
+document.getElementById("reset-btn").addEventListener("click", () => {
+  fileInput.value = "";
+  document.getElementById("viewer").classList.remove("active");
+  document.getElementById("upload-screen").style.display = "flex";
+});
+</script>
+</body>
+</html>
