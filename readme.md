@@ -14,6 +14,10 @@ message leaves your device. The page makes zero network requests after it loads.
 2. Click **Choose a file** (or drag a CSV onto the box) and select a Boomerang export.
 3. Pick a contact on the left to read the thread.
 
+**Keyboard navigation:** arrow keys move between panes — **Left** focuses the contact list,
+**Right** focuses the messages. The focused pane is outlined. In the contact list, **Up/Down**
+move between contacts; in the messages pane they scroll. Clicking a pane also focuses it.
+
 ## What it does
 
 - **Groups by contact**, normalizing phone-number variants (e.g. `+15555555555` and
@@ -24,6 +28,10 @@ message leaves your device. The page makes zero network requests after it loads.
   `📎 <non-text content>` instead of an empty bubble.
 - **Group-text hint:** a 👥 icon marks individual messages that look like they belong to
   a group chat. Hover it for the reason. See the limitation below.
+- **Timeline context on hover:** hover any message to see where it falls in the global
+  timeline across *all* contacts — the 10 messages before it, the message itself, and the
+  5 after. This is the most useful way to reassemble a group conversation that the export
+  scattered across separate contacts.
 
 ## About group texts
 
@@ -31,7 +39,9 @@ The Boomerang export has **no concept of a group**: one phone number per row, no
 ID, no recipient list. Group conversations are therefore scattered across the individual
 contacts in the export, and they cannot be faithfully reconstructed. The 👥 icon is a
 best-effort hint (it flags reactions that quote a message belonging to a different
-contact, and messages that address multiple people), not a complete group view.
+contact, and messages that address multiple people), not a complete group view. To follow
+a scattered group conversation, hover its messages and read the global timeline context
+popup, which interleaves every contact in chronological order.
 
 ## Deploy to GitHub Pages (deploy from a branch)
 
